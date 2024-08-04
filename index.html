@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKIBIDI 776 FM</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            transition: background-color 0.3s ease;
+        }
+
+        .container {
+            background-color: #1e1e1e;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            max-width: 800px;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        h1 {
+            color: #bb86fc;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        #currentTrack {
+            font-style: italic;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #03dac6;
+        }
+
+        #youtubePlayer {
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        #adminPanel {
+            background-color: #2e2e2e;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 30px;
+            display: none; /* Hide the admin panel by default */
+        }
+
+        #adminFeatures {
+            display: none;
+            transition: all 0.3s ease;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            background-color: #3e3e3e;
+            color: #ffffff;
+            transition: all 0.3s ease;
+        }
+
+        button {
+            background-color: #bb86fc;
+            color: #000000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 700;
+            margin: 5px;
+        }
+
+        button:hover {
+            background-color: #03dac6;
+            transform: translateY(-2px);
+        }
+
+        #unmuteButton, #speakButton {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container fade-in">
+        <h1>SKIBIDI 776 FM</h1>
+        <div id="currentTrack">Currently playing: No track</div>
+        
+        <div id="youtubePlayer"></div>
+        <button id="unmuteButton" class="fade-in">Unmute</button>
+        <button id="speakButton" class="fade-in">Hear</button>
+        
+        <div id="adminPanel">
+            <h2>Admin Panel</h2>
+            <input type="password" id="adminPassword" placeholder="Enter admin password">
+            <input type="text" id="adminName" placeholder="Enter your username">
+            <button onclick="checkPassword()">Login</button>
+            
+            <div id="adminFeatures">
+                <input type="text" id="trackLink" placeholder="YouTube link">
+                <button onclick="playTrack()">Play</button>
+                <br>
+                <textarea id="speakText" rows="4" placeholder="Enter text to speak"></textarea>
+                <br>
+                <button onclick="speakText()">Speak</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+        const socket = io('https://bv709sites.github.io/skibidiradio'); // Change this to your server URL
+        let player;
+        let audioElement = new Audio();
+        let pendingSpeech = null;
+
+        socket.on('currentTrack', (track) => {
+            document.getElementById('currentTrack').innerText = 'Currently playing: ' + track;
+            document.getElementById('currentTrack').classList.add('fade-in');
+        });
+
+        socket.on('prepareVideo', (videoData) => {
+            console.log("Preparing video:", videoData);
+            const videoId = extractVideoId(videoData.link);
+            if (videoId) {
+                if (player) {
+                    player.loadVideoById({videoId: videoId, startSeconds: 0, suggestedQuality: 'default'});
+                    player.mute();
+                } else {
+                    createYouTubePlayer(videoId);
+                }
+                document.getElementById('unmuteButton').style.display = 'inline-block';
+                document.getElementById('unmuteButton').classList.add('fade-in');
+            } else {
+                console.error("Invalid YouTube link:", videoData.link);
+            }
+        });
+
+        socket.on('prepareSpeak', (speechData) => {
+            pendingSpeech = speechData;
+            document.getElementById('speakButton').style.display = 'inline-block';
+            document.getElementById('speakButton').classList.add('fade-in');
+            document.getElementById('speakButton').textContent = `Hear ${speechData.adminName}`;
+        });
+
+        function checkPassword() {
+            const password = document.getElementById('adminPassword').value;
+            const adminName = document.getElementById('adminName').value;
+            if (password === 'sigma123' && adminName.trim() !== '') {
+                document.getElementById('adminFeatures').style.display = 'block';
+                document.getElementById('adminFeatures').classList.add('fade-in');
+            } else if (password !== 'sigma123') {
+                alert('Incorrect password');
+            } else {
+                alert('Please enter a username');
+            }
+        }
+
+        function playTrack() {
+            const trackLink = document.getElementById('trackLink').value;
+            console.log("Attempting to play:", trackLink);
+            fetch('/play', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ link: trackLink }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Server response:", data);
+                if (data.error) {
+                    console.error("Server error:", data.error);
+                }
+            })
+            .catch((error) => {
+                console.error('Error playing track:', error);
+                alert('Failed to play track. Please check the console for more information.');
+            });
+        }
+
+        function speakText() {
+            const text = document.getElementById('speakText').value;
+            const adminName = document.getElementById('adminName').value;
+            fetch('/speak', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: text, adminName: adminName }),
+            })
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch((error) => console.error('Error:', error));
+        }
+
+        function createYouTubePlayer(videoId) {
+            player = new YT.Player('youtubePlayer', {
+                height: '360',
+                width: '640',
+                videoId: videoId,
+                playerVars: {
+                    'autoplay': 1,
+                    'mute': 1
+                },
+                events: {
+                    'onReady': onPlayerReady
+                }
+            });
+        }
+
+        function onPlayerReady(event) {
+            event.target.playVideo();
+        }
+
+        function extractVideoId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        document.getElementById('unmuteButton').addEventListener('click', function() {
+            if (player && player.isMuted()) {
+                player.unMute();
+                this.textContent = 'Mute';
+            } else if (player) {
+                player.mute();
+                this.textContent = 'Unmute';
+            }
+        });
+
+        document.getElementById('speakButton').addEventListener('click', function() {
+            if (pendingSpeech) {
+                audioElement.src = pendingSpeech.url;
+                audioElement.play().catch(error => console.error('Error playing audio:', error));
+                pendingSpeech = null;
+                this.style.display = 'none';
+            }
+        });
+
+        let adminPanelVisible = false;
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'F12') {
+                event.preventDefault(); // Prevent the default F12 action (opening dev tools)
+                adminPanelVisible = !adminPanelVisible;
+                document.getElementById('adminPanel').style.display = adminPanelVisible ? 'block' : 'none';
+                if (adminPanelVisible) {
+                    alert('Admin panel is now visible. Press F12 again to hide it.');
+                }
+            }
+        });
+
+        // Optionally, you can add this to hide the admin panel when the user clicks outside of it
+        document.addEventListener('click', function(event) {
+            const adminPanel = document.getElementById('adminPanel');
+            if (adminPanelVisible && !adminPanel.contains(event.target)) {
+                adminPanelVisible = false;
+                adminPanel.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
